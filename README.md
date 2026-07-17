@@ -259,13 +259,117 @@ with no over- or under-counting).
 
 ---
 
-## 8. Notes & assumptions
+## 🏗️ Implementation Phases & Contributors
 
-* Configuration set via `POST /config` is global (applies to all keys), not
-  per-key — matching the brief's "configurable limit values and durations"
-  without introducing per-client config storage, which was out of scope.
-* Switching `algorithm` via `POST /config` does not mix state between
-  algorithms: each strategy owns its own store, so a key's history under
-  Fixed Window is independent of its history under Token Bucket.
-* State is in-memory only and is lost on restart — expected for this MVP
-  (no persistence, no Redis, per the brief).
+Work is split into three phases, mapped directly onto the project's folder
+structure. Each phase is owned end-to-end by one person, so there is a
+single point of responsibility for each part of the system.
+
+---
+
+### Phase 0 — Foundation
+**Owner: Asser**
+
+Builds everything the rest of the system depends on: the data models, the
+core interface, and the storage layer.
+
+**Deliverables:**
+
+- [ ] Create `RateLimitResult` and `RateLimitConfig` models in
+      `include/rate_limiter/models/`
+- [ ] Define the `IRateLimitStrategy` interface in
+      `include/rate_limiter/core/`
+- [ ] Define the `IKeyStore` interface and implement the thread-safe sharded
+      in-memory store (`ShardedKeyStore`) in
+      `include/rate_limiter/storage/` and `src/storage/`
+- [ ] Implement `ConfigManager` in `include/rate_limiter/config/` and
+      `src/config/`
+- [ ] Confirm the project builds and a key's counter can be read,
+      incremented, and reset directly through the Storage layer
+      *(no API yet needed for this check)*
+
+**Folder ownership:**
+```
+include/rate_limiter/models/
+include/rate_limiter/core/        ← interface only
+include/rate_limiter/storage/
+include/rate_limiter/config/
+src/storage/
+src/config/
+```
+
+---
+
+### Phase 1 — Strategies, Logging, and Concurrency
+**Owner: Magdy**
+
+Builds the decision-making engine on top of the Phase 0 foundation, and
+proves it holds up under concurrent load.
+
+**Deliverables:**
+
+- [ ] Implement `FixedWindowStrategy` in `include/rate_limiter/core/` and
+      `src/core/`
+- [ ] Implement `SlidingWindowStrategy` and `TokenBucketStrategy` behind the
+      same `IRateLimitStrategy` interface
+- [ ] Implement `Logger` for structured allow/block/error events in
+      `include/rate_limiter/logging/` and `src/logging/`
+- [ ] Write multi-threaded stress tests that hit the same key concurrently
+      across all three strategies to confirm no over-counting
+- [ ] Confirm that switching strategies through `ConfigManager` selects the
+      correct algorithm at runtime
+
+**Folder ownership:**
+```
+include/rate_limiter/core/        ← strategy implementations
+include/rate_limiter/logging/
+src/core/
+src/logging/
+tests/
+```
+
+---
+
+### Phase 2 — Service, API Layer, and Delivery
+**Owner: Kholoud**
+
+Ties the Core and Storage layers together behind a usable API, and prepares
+the project for handoff.
+
+**Deliverables:**
+
+- [ ] Build `RateLimiterService` to coordinate `ConfigManager`, the active
+      Strategy, and the Storage layer in `include/rate_limiter/service/` and
+      `src/service/`
+- [ ] Build `HttpServer` and `RateLimitController` to expose
+      `POST /check`, `GET /status/{key}`, and `POST /config` in
+      `include/rate_limiter/api/` and `src/api/`
+- [ ] Implement input validation and error handling at the Controller layer
+      (`400` for invalid/missing key or malformed body, `429` for
+      over-limit, `500` for internal errors)
+- [ ] Wire all components together in `src/main.cpp`
+- [ ] Write the README with build/run instructions and example curl calls;
+      confirm a clean build and run from a fresh checkout
+
+**Folder ownership:**
+```
+include/rate_limiter/service/
+include/rate_limiter/api/
+src/service/
+src/api/
+src/main.cpp
+```
+
+---
+
+### Phase Dependencies
+
+```
+Phase 0 (Asser) ──▶ Phase 1 (Magdy) ──▶ Phase 2 (Kholoud)
+   Models              Strategies            Service
+   Interfaces          Logging               API Layer
+   Storage             Tests                 main.cpp
+   ConfigManager
+```
+
+> ⚠️ Each phase must be merged and verified before the next phase begins.
