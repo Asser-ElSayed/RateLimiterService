@@ -1,0 +1,27 @@
+# Build output
+build/
+build_*/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.o
+*.obj
+*.exe
+*.log
+
+# Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+x64/
+x86/
+Debug/
+Release/
+
+# CLion / VS Code
+.idea/
+.vscode/
+cmake-build-*/
